@@ -170,6 +170,52 @@ namespace http_control
                             await listener.GetContextAsync().ContinueWith(this.HandleRequest);
                         }), true);
                         break;
+                    case "queue":
+                        if (req.QueryString["id"] != null)
+                        {
+                            int id;
+                            if (!int.TryParse(req.QueryString["id"], out id) || id <= 0)
+                            {
+                                res.StatusCode = 400;
+                                break;
+                            }
+
+                            Player.ServiceThreads.ExecuteInMainThread(new GetPlayerData(() =>
+                            {
+                                if (id > Player.CurrentPlaylistItem.PlayList.GetItemCount())
+                                {
+                                    res.StatusCode = 400;
+                                    return;
+                                }
+                                Player.ServicePlaylistManager.PlaylistQueue.Add(Player.CurrentPlaylistItem.PlayList.GetItem(id - 1).Result, false);
+                            }, async () =>
+                            {
+                                await TailAction(resObj, res);
+                                await listener.GetContextAsync().ContinueWith(HandleRequest);
+                            }), true);
+                            break;
+                        }
+                        else if (req.QueryString["text"] != null)
+                        {
+                            Player.ServiceThreads.ExecuteInMainThread(new GetPlayerData(() =>
+                            {
+                                var s = GetSongs().Where(t => t.Song.ToLower().Contains(HttpUtility.UrlDecode(req.Url.Query
+                                    .Substring(req.Url.Query.IndexOf('=') + 1)).ToLower()));
+                                if (s.Count() == 0)
+                                    res.StatusCode = 204;
+                                else if (s.Count() == 1)
+                                    Player.ServicePlaylistManager.PlaylistQueue.Add(Player.CurrentPlaylistItem.PlayList.GetItem(s.First().Id).Result, false);
+                                else
+                                    resObj = s.ToArray();
+                            }, async () =>
+                            {
+                                await TailAction(resObj, res);
+                                await listener.GetContextAsync().ContinueWith(HandleRequest);
+                            }), true);
+                            break;
+                        }
+                        res.StatusCode = 400;
+                        break;
                     default:
                         res.ContentType = "";
                         res.StatusCode = 400;
